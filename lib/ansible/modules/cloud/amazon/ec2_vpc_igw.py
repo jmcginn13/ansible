@@ -62,6 +62,34 @@ register: igw
 
 '''
 
+RETURN = '''
+changed:
+  description: If any changes have been made to the Internet Gateway.
+  type: bool
+  returned: always
+  sample:
+    changed: false
+gateway_id:
+  description: The unique identifier for the Internet Gateway.
+  type: str
+  returned: I(state=present)
+  sample:
+    gateway_id: "igw-XXXXXXXX"
+tags:
+  description: The tags associated the Internet Gateway.
+  type: dict
+  returned: I(state=present)
+  sample:
+    tags:
+      "Ansible": "Test"
+vpc_id:
+  description: The VPC ID associated with the Internet Gateway.
+  type: str
+  returned: I(state=present)
+  sample:
+    vpc_id: "vpc-XXXXXXXX"
+'''
+
 try:
     import boto.ec2
     import boto.vpc
@@ -82,7 +110,7 @@ class AnsibleIGWException(Exception):
 
 
 def get_igw_info(igw):
-    return {'id': igw.id,
+    return {'gateway_id': igw.id,
             'tags': igw.tags,
             'vpc_id': igw.vpc_id
             }
@@ -99,18 +127,30 @@ def ensure_tags(vpc_conn, resource_id, tags, add_only, check_mode):
         if cur_tags == tags:
             return {'changed': False, 'tags': cur_tags}
 
+        if check_mode:
+            latest_check_mode_tags = cur_tags
+
         to_delete = dict((k, cur_tags[k]) for k in cur_tags if k not in tags)
         if to_delete and not add_only:
-            vpc_conn.delete_tags(resource_id, to_delete, dry_run=check_mode)
+            if check_mode:
+                # just overwriting latest_check_mode_tags instead of deleting keys
+                latest_check_mode_tags = dict((k, cur_tags[k]) for k in cur_tags if k not in to_delete)
+            else:
+                vpc_conn.delete_tags(resource_id, to_delete)
 
         to_add = dict((k, tags[k]) for k in tags if k not in cur_tags or cur_tags[k] != tags[k])
         if to_add:
-            vpc_conn.create_tags(resource_id, to_add, dry_run=check_mode)
+            if check_mode:
+                latest_check_mode_tags.update(to_add)
+            else:
+                vpc_conn.create_tags(resource_id, to_add)
 
+        if check_mode:
+            return {'changed': True, 'tags': latest_check_mode_tags}
         latest_tags = get_resource_tags(vpc_conn, resource_id)
         return {'changed': True, 'tags': latest_tags}
     except EC2ResponseError as e:
-        raise AnsibleTagCreationException(
+        raise AnsibleIGWException(
             'Unable to update tags for {0}, error: {1}'.format(resource_id, e))
 
 
@@ -159,6 +199,11 @@ def ensure_igw_present(vpc_conn, vpc_id, tags, check_mode):
     igw.vpc_id = vpc_id
 
     if tags != igw.tags:
+        if check_mode:
+            check_mode_tags = ensure_tags(vpc_conn, igw.id, tags, False, check_mode)
+            igw_info = get_igw_info(igw)
+            igw_info.get('tags', {}).update(check_mode_tags.get('tags', {}))
+            return {'changed': True, 'gateway': igw_info}
         ensure_tags(vpc_conn, igw.id, tags, False, check_mode)
         igw.tags = tags
         changed = True
@@ -215,7 +260,7 @@ def main():
     except AnsibleIGWException as e:
         module.fail_json(msg=str(e))
 
-    module.exit_json(**result)
+    module.exit_json(changed=result['changed'], **result.get('gateway', {}))
 
 
 if __name__ == '__main__':

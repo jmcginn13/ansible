@@ -20,19 +20,17 @@
 from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
 
-import sys
-import pytest
-
-if sys.version_info < (2, 7):
-    from nose.plugins.skip import SkipTest
-    raise SkipTest("F5 Ansible modules require Python >= 2.7")
-
 import os
 import json
+import pytest
+import sys
 
+from nose.plugins.skip import SkipTest
+if sys.version_info < (2, 7):
+    raise SkipTest("F5 Ansible modules require Python >= 2.7")
 
 from ansible.compat.tests import unittest
-from ansible.compat.tests.mock import patch
+from ansible.compat.tests.mock import patch, Mock
 from ansible.module_utils import basic
 from ansible.module_utils._text import to_bytes
 from ansible.module_utils.f5_utils import AnsibleF5Client
@@ -45,11 +43,14 @@ try:
     from library.bigip_user import UnparitionedManager
     from library.bigip_user import PartitionedManager
 except ImportError:
-    from ansible.modules.network.f5.bigip_user import Parameters
-    from ansible.modules.network.f5.bigip_user import ModuleManager
-    from ansible.modules.network.f5.bigip_user import ArgumentSpec
-    from ansible.modules.network.f5.bigip_user import UnparitionedManager
-    from ansible.modules.network.f5.bigip_user import PartitionedManager
+    try:
+        from ansible.modules.network.f5.bigip_user import Parameters
+        from ansible.modules.network.f5.bigip_user import ModuleManager
+        from ansible.modules.network.f5.bigip_user import ArgumentSpec
+        from ansible.modules.network.f5.bigip_user import UnparitionedManager
+        from ansible.modules.network.f5.bigip_user import PartitionedManager
+    except ImportError:
+        raise SkipTest("F5 Ansible modules require the f5-sdk Python library")
 
 fixture_path = os.path.join(os.path.dirname(__file__), 'fixtures')
 fixture_data = {}
@@ -141,12 +142,11 @@ class TestManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: False
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=False)
 
         pm = PartitionedManager(client)
-        pm.create_on_device = lambda: True
-        pm.exists = lambda: False
+        pm.create_on_device = Mock(return_value=True)
+        pm.exists = Mock(return_value=False)
 
         results = pm.exec_module()
 
@@ -171,12 +171,11 @@ class TestManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: False
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=False)
 
         pm = PartitionedManager(client)
-        pm.create_on_device = lambda: True
-        pm.exists = lambda: False
+        pm.create_on_device = Mock(return_value=True)
+        pm.exists = Mock(return_value=False)
 
         results = pm.exec_module()
 
@@ -202,12 +201,11 @@ class TestManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: False
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=False)
 
         pm = PartitionedManager(client)
-        pm.create_on_device = lambda: True
-        pm.exists = lambda: False
+        pm.create_on_device = Mock(return_value=True)
+        pm.exists = Mock(return_value=False)
 
         msg = "The 'update_password' option " \
               "needs to be set to 'on_create' when creating " \
@@ -233,12 +231,11 @@ class TestManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: False
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=False)
 
         pm = PartitionedManager(client)
-        pm.create_on_device = lambda: True
-        pm.exists = lambda: False
+        pm.create_on_device = Mock(return_value=True)
+        pm.exists = Mock(return_value=False)
 
         msg = "The 'partition_access' option " \
               "is required when creating a resource."
@@ -268,12 +265,11 @@ class TestManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: False
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=False)
 
         pm = PartitionedManager(client)
-        pm.create_on_device = lambda: True
-        pm.exists = lambda: False
+        pm.create_on_device = Mock(return_value=True)
+        pm.exists = Mock(return_value=False)
 
         results = pm.exec_module()
 
@@ -301,12 +297,11 @@ class TestManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: False
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=False)
 
         pm = PartitionedManager(client)
-        pm.create_on_device = lambda: True
-        pm.exists = lambda: False
+        pm.create_on_device = Mock(return_value=True)
+        pm.exists = Mock(return_value=False)
 
         msg = "Shell access is only available to 'admin' or " \
               "'resource-admin' roles"
@@ -336,13 +331,12 @@ class TestManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: False
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=False)
 
         pm = PartitionedManager(client)
-        pm.exists = lambda: True
-        pm.update_on_device = lambda: True
-        pm.read_current_from_device = lambda: current
+        pm.exists = Mock(return_value=True)
+        pm.update_on_device = Mock(return_value=True)
+        pm.read_current_from_device = Mock(return_value=current)
 
         results = pm.exec_module()
 
@@ -369,13 +363,12 @@ class TestManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: False
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=False)
 
         pm = PartitionedManager(client)
-        pm.exists = lambda: True
-        pm.update_on_device = lambda: True
-        pm.read_current_from_device = lambda: current
+        pm.exists = Mock(return_value=True)
+        pm.update_on_device = Mock(return_value=True)
+        pm.read_current_from_device = Mock(return_value=current)
 
         results = pm.exec_module()
 
@@ -407,13 +400,12 @@ class TestManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: False
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=False)
 
         pm = PartitionedManager(client)
-        pm.exists = lambda: True
-        pm.update_on_device = lambda: True
-        pm.read_current_from_device = lambda: current
+        pm.exists = Mock(return_value=True)
+        pm.update_on_device = Mock(return_value=True)
+        pm.read_current_from_device = Mock(return_value=current)
 
         results = pm.exec_module()
 
@@ -447,13 +439,12 @@ class TestManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: False
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=False)
 
         pm = PartitionedManager(client)
-        pm.exists = lambda: True
-        pm.update_on_device = lambda: True
-        pm.read_current_from_device = lambda: current
+        pm.exists = Mock(return_value=True)
+        pm.update_on_device = Mock(return_value=True)
+        pm.read_current_from_device = Mock(return_value=current)
 
         results = pm.exec_module()
 
@@ -488,13 +479,12 @@ class TestManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: True
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=True)
 
         upm = UnparitionedManager(client)
-        upm.exists = lambda: True
-        upm.update_on_device = lambda: True
-        upm.read_current_from_device = lambda: current
+        upm.exists = Mock(return_value=True)
+        upm.update_on_device = Mock(return_value=True)
+        upm.read_current_from_device = Mock(return_value=current)
 
         results = upm.exec_module()
 
@@ -532,13 +522,12 @@ class TestManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: True
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=True)
 
         upm = UnparitionedManager(client)
-        upm.exists = lambda: True
-        upm.update_on_device = lambda: True
-        upm.read_current_from_device = lambda: current
+        upm.exists = Mock(return_value=True)
+        upm.update_on_device = Mock(return_value=True)
+        upm.read_current_from_device = Mock(return_value=current)
 
         msg = "Shell access is only available to 'admin' or " \
               "'resource-admin' roles"
@@ -575,12 +564,11 @@ class TestLegacyManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: True
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=True)
 
         upm = UnparitionedManager(client)
-        upm.create_on_device = lambda: True
-        upm.exists = lambda: False
+        upm.create_on_device = Mock(return_value=True)
+        upm.exists = Mock(return_value=False)
 
         results = upm.exec_module()
 
@@ -605,12 +593,11 @@ class TestLegacyManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: True
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=True)
 
         upm = UnparitionedManager(client)
-        upm.create_on_device = lambda: True
-        upm.exists = lambda: False
+        upm.create_on_device = Mock(return_value=True)
+        upm.exists = Mock(return_value=False)
 
         results = upm.exec_module()
 
@@ -636,12 +623,11 @@ class TestLegacyManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: True
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=True)
 
         upm = UnparitionedManager(client)
-        upm.create_on_device = lambda: True
-        upm.exists = lambda: False
+        upm.create_on_device = Mock(return_value=True)
+        upm.exists = Mock(return_value=False)
 
         msg = "The 'update_password' option " \
               "needs to be set to 'on_create' when creating " \
@@ -667,12 +653,11 @@ class TestLegacyManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: True
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=True)
 
         upm = UnparitionedManager(client)
-        upm.create_on_device = lambda: True
-        upm.exists = lambda: False
+        upm.create_on_device = Mock(return_value=True)
+        upm.exists = Mock(return_value=False)
 
         msg = "The 'partition_access' option " \
               "is required when creating a resource."
@@ -702,12 +687,11 @@ class TestLegacyManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: True
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=True)
 
         upm = UnparitionedManager(client)
-        upm.create_on_device = lambda: True
-        upm.exists = lambda: False
+        upm.create_on_device = Mock(return_value=True)
+        upm.exists = Mock(return_value=False)
 
         results = upm.exec_module()
 
@@ -735,12 +719,11 @@ class TestLegacyManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: True
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=True)
 
         upm = UnparitionedManager(client)
-        upm.create_on_device = lambda: True
-        upm.exists = lambda: False
+        upm.create_on_device = Mock(return_value=True)
+        upm.exists = Mock(return_value=False)
 
         msg = "Shell access is only available to 'admin' or " \
               "'resource-admin' roles"
@@ -776,13 +759,12 @@ class TestLegacyManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: True
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=True)
 
         upm = UnparitionedManager(client)
-        upm.exists = lambda: True
-        upm.update_on_device = lambda: True
-        upm.read_current_from_device = lambda: current
+        upm.exists = Mock(return_value=True)
+        upm.update_on_device = Mock(return_value=True)
+        upm.read_current_from_device = Mock(return_value=current)
 
         results = upm.exec_module()
 
@@ -814,13 +796,12 @@ class TestLegacyManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: True
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=True)
 
         upm = UnparitionedManager(client)
-        upm.exists = lambda: True
-        upm.update_on_device = lambda: True
-        upm.read_current_from_device = lambda: current
+        upm.exists = Mock(return_value=True)
+        upm.update_on_device = Mock(return_value=True)
+        upm.read_current_from_device = Mock(return_value=current)
 
         results = upm.exec_module()
 
@@ -854,13 +835,12 @@ class TestLegacyManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: True
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=True)
 
         upm = UnparitionedManager(client)
-        upm.exists = lambda: True
-        upm.update_on_device = lambda: True
-        upm.read_current_from_device = lambda: current
+        upm.exists = Mock(return_value=True)
+        upm.update_on_device = Mock(return_value=True)
+        upm.read_current_from_device = Mock(return_value=current)
 
         results = upm.exec_module()
 
@@ -895,13 +875,12 @@ class TestLegacyManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: True
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=True)
 
         upm = UnparitionedManager(client)
-        upm.exists = lambda: True
-        upm.update_on_device = lambda: True
-        upm.read_current_from_device = lambda: current
+        upm.exists = Mock(return_value=True)
+        upm.update_on_device = Mock(return_value=True)
+        upm.read_current_from_device = Mock(return_value=current)
 
         results = upm.exec_module()
 
@@ -939,13 +918,12 @@ class TestLegacyManager(unittest.TestCase):
 
         # Override methods to force specific logic in the module to happen
         mm = ModuleManager(client)
-        mm.is_version_less_than_13 = lambda: True
-        mm.exit_json = lambda x: False
+        mm.is_version_less_than_13 = Mock(return_value=True)
 
         upm = UnparitionedManager(client)
-        upm.exists = lambda: True
-        upm.update_on_device = lambda: True
-        upm.read_current_from_device = lambda: current
+        upm.exists = Mock(return_value=True)
+        upm.update_on_device = Mock(return_value=True)
+        upm.read_current_from_device = Mock(return_value=current)
 
         msg = "Shell access is only available to 'admin' or " \
               "'resource-admin' roles"

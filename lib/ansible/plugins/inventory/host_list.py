@@ -27,7 +27,7 @@ EXAMPLES: |
     ansible -i '10.10.2.6, 10.10.2.4' -m ping all
 
     # DNS resolvable names
-    ansible -i 'host1.example.com, host2' -m user -a 'name=me state=abset' all
+    ansible -i 'host1.example.com, host2' -m user -a 'name=me state=absent' all
 
     # just use localhost
     ansible-playbook -i 'localhost,' play.yml -c local
@@ -64,6 +64,7 @@ class InventoryModule(BaseInventoryPlugin):
 
         try:
             for h in host_list.split(','):
+                h = h.strip()
                 if h:
                     try:
                         (host, port) = parse_address(h, allow_ranges=False)

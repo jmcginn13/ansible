@@ -34,11 +34,12 @@ class ShellBase(object):
     def __init__(self):
         self.env = dict()
         if C.DEFAULT_MODULE_SET_LOCALE:
+            module_locale = C.DEFAULT_MODULE_LANG or os.getenv('LANG', 'en_US.UTF-8')
             self.env.update(
                 dict(
-                    LANG=C.DEFAULT_MODULE_LANG,
-                    LC_ALL=C.DEFAULT_MODULE_LANG,
-                    LC_MESSAGES=C.DEFAULT_MODULE_LANG,
+                    LANG=module_locale,
+                    LC_ALL=module_locale,
+                    LC_MESSAGES=module_locale,
                 )
             )
 
@@ -109,14 +110,16 @@ class ShellBase(object):
         # /var/tmp is not).
 
         if system:
-            if C.DEFAULT_REMOTE_TMP.startswith('/var/tmp'):
+            # FIXME: create 'system tmp dirs' config/var and check tmpdir is in those values to allow for /opt/tmp, etc
+            if tmpdir.startswith('/var/tmp'):
                 basetmpdir = '/var/tmp'
             else:
                 basetmpdir = '/tmp'
-        elif tmpdir is None:
-            basetmpdir = C.DEFAULT_REMOTE_TMP
         else:
-            basetmpdir = tmpdir
+            if tmpdir is None:
+                basetmpdir = C.DEFAULT_REMOTE_TMP
+            else:
+                basetmpdir = tmpdir
 
         basetmp = self.join_path(basetmpdir, basefile)
 

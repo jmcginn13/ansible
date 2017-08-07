@@ -42,7 +42,7 @@ _DEVICE_CONNECTION = None
 eos_argument_spec = {
     'host': dict(),
     'port': dict(type='int'),
-    'username': dict(fallback=(env_fallback, ['ANSIBLE_NET_USERNAME'])),
+    'username': dict(fallback=(env_fallback, ['ANSIBLE_NET_USERNAME']), aliases=['name']),
     'password': dict(fallback=(env_fallback, ['ANSIBLE_NET_PASSWORD']), no_log=True),
     'ssh_keyfile': dict(fallback=(env_fallback, ['ANSIBLE_NET_SSH_KEYFILE']), type='path'),
 
@@ -240,7 +240,7 @@ class Cli:
             self._module.fail_json(msg='unable to enter configuration mode', output=to_text(err, errors='surrogate_then_replace'))
 
         if replace:
-            self.exec_command('rollback clean-config', check_rc=True)
+            self.exec_command('rollback clean-config')
 
         rc, out, err = self.send_config(commands)
         if rc != 0:

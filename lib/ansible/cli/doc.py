@@ -224,6 +224,7 @@ class DocCLI(CLI):
             if os.path.isdir(filename):
                 continue
 
+            doc = None
             try:
                 doc, plainexamples, returndocs, metadata = plugin_docs.get_docstring(filename)
             except:
@@ -294,7 +295,7 @@ class DocCLI(CLI):
 
             required = opt.pop('required', False)
             if not isinstance(required, bool):
-                raise("Incorrect value for 'Required', a boolean is needed.: %s" % required)
+                raise AnsibleError("Incorrect value for 'Required', a boolean is needed.: %s" % required)
             if required:
                 opt_leadin = "="
             else:
@@ -311,11 +312,13 @@ class DocCLI(CLI):
 
             aliases = ''
             if 'aliases' in opt:
-                choices = "(Aliases: " + ", ".join(str(i) for i in opt['aliases']) + ")"
+                if len(opt['aliases']) > 0:
+                    aliases = "(Aliases: " + ", ".join(str(i) for i in opt['aliases']) + ")"
                 del opt['aliases']
             choices = ''
             if 'choices' in opt:
-                choices = "(Choices: " + ", ".join(str(i) for i in opt['choices']) + ")"
+                if len(opt['choices']) > 0:
+                    choices = "(Choices: " + ", ".join(str(i) for i in opt['choices']) + ")"
                 del opt['choices']
             default = ''
             if 'default' in opt or not required:

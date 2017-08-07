@@ -1,4 +1,4 @@
-# (c) 2016 Red Hat Inc.
+# (c) 2017 Red Hat Inc.
 #
 # This file is part of Ansible
 #
@@ -23,7 +23,7 @@ import pty
 import subprocess
 import sys
 
-from ansible.module_utils._text import to_bytes
+from ansible.module_utils._text import to_bytes, to_text
 from ansible.module_utils.six.moves import cPickle
 from ansible.plugins.connection import ConnectionBase
 
@@ -41,7 +41,6 @@ class Connection(ConnectionBase):
     has_pipelining = False
 
     def _connect(self):
-
         self._connected = True
         return self
 
@@ -67,11 +66,12 @@ class Connection(ConnectionBase):
         (stdout, stderr) = p.communicate()
         stdin.close()
 
-        return (p.returncode, stdout, stderr)
+        return (p, stdout, stderr)
 
     def exec_command(self, cmd, in_data=None, sudoable=True):
         super(Connection, self).exec_command(cmd, in_data=in_data, sudoable=sudoable)
-        return self._do_it('EXEC: ' + cmd)
+        p, out, err = self._do_it('EXEC: ' + cmd)
+        return p.returncode, out, err
 
     def put_file(self, in_path, out_path):
         super(Connection, self).put_file(in_path, out_path)
@@ -83,3 +83,24 @@ class Connection(ConnectionBase):
 
     def close(self):
         self._connected = False
+
+    def run(self):
+        """Returns the path of the persistent connection socket.
+
+        Attempts to ensure (within playcontext.timeout seconds) that the
+        socket path exists. If the path exists (or the timeout has expired),
+        returns the socket path.
+        """
+        p, out, err = self._do_it('RUN:')
+        while True:
+            out = out.strip()
+            if out == b'':
+                # EOF file found
+                return None
+            elif out.startswith(b'#SOCKET_PATH#'):
+                break
+            else:
+                out = p.stdout.readline()
+
+        socket_path = out.split(b'#SOCKET_PATH#: ', 1)[1]
+        return to_text(socket_path, errors='surrogate_or_strict')

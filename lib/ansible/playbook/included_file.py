@@ -22,6 +22,7 @@ __metaclass__ = type
 import os
 
 from ansible.playbook.task_include import TaskInclude
+from ansible.playbook.role_include import IncludeRole
 from ansible.template import Templar
 
 try:
@@ -64,7 +65,7 @@ class IncludedFile:
             original_host = res._host
             original_task = res._task
 
-            if original_task.action == 'include':
+            if original_task.action in ('include', 'include_tasks'):
                 if original_task.loop:
                     if 'results' not in res._result:
                         continue
@@ -101,11 +102,14 @@ class IncludedFile:
                                 if not isinstance(parent_include, TaskInclude):
                                     parent_include = parent_include._parent
                                     continue
-                                parent_include_dir = templar.template(os.path.dirname(parent_include.args.get('_raw_params')))
-                                if cumulative_path is None:
-                                    cumulative_path = parent_include_dir
-                                elif not os.path.isabs(cumulative_path):
+                                if isinstance(parent_include, IncludeRole):
+                                    parent_include_dir = parent_include._role_path
+                                else:
+                                    parent_include_dir = os.path.dirname(templar.template(parent_include.args.get('_raw_params')))
+                                if cumulative_path is not None and not os.path.isabs(cumulative_path):
                                     cumulative_path = os.path.join(parent_include_dir, cumulative_path)
+                                else:
+                                    cumulative_path = parent_include_dir
                                 include_target = templar.template(include_result['include'])
                                 if original_task._role:
                                     new_basedir = os.path.join(original_task._role._role_path, 'tasks', cumulative_path)

@@ -27,6 +27,9 @@ DOCUMENTATION:
         - The C(children) modifier indicates that the section contains groups.
         - The C(vars) modifier indicates that the section contains variables assigned to members of the group.
         - Anything found outside a section is considered an 'ungrouped' host.
+        - Values passed in using the C(key=value) syntax are interpreted as Python literal structure (strings, numbers, tuples, lists, dicts,
+          booleans, None), alternatively as string. For example C(var=FALSE) would create a string equal to 'FALSE'. Do not rely on types set
+          during definition, always make sure you specify type with a filter when needed when consuming the variable.
     notes:
         - It takes the place of the previously hardcoded INI inventory.
         - To function it requires being whitelisted in configuration.
@@ -63,7 +66,7 @@ EXAMPLES:
       # other example config
       host1 # this is 'ungrouped'
 
-      # both hsots have same IP but diff ports, also 'ungrouped'
+      # both hosts have same IP but diff ports, also 'ungrouped'
       host2 ansible_host=127.0.0.1 ansible_port=44
       host3 ansible_host=127.0.0.1 ansible_port=45
 
@@ -200,7 +203,8 @@ class InventoryModule(BaseFileInventoryPlugin):
 
                 if groupname in pending_declarations and state != 'vars':
                     if pending_declarations[groupname]['state'] == 'children':
-                        self.inventory.add_child(pending_declarations[groupname]['parent'], groupname)
+                        for parent in pending_declarations[groupname]['parents']:
+                            self.inventory.add_child(parent, groupname)
                     del pending_declarations[groupname]
 
                 continue
@@ -231,7 +235,10 @@ class InventoryModule(BaseFileInventoryPlugin):
             elif state == 'children':
                 child = self._parse_group_name(line)
                 if child not in self.inventory.groups:
-                    pending_declarations[child] = dict(line=self.lineno, state=state, name=child, parent=groupname)
+                    if child not in pending_declarations:
+                        pending_declarations[child] = dict(line=self.lineno, state=state, name=child, parents=[groupname])
+                    else:
+                        pending_declarations[child]['parents'].append(groupname)
                 else:
                     self.inventory.add_child(groupname, child)
 
@@ -249,7 +256,7 @@ class InventoryModule(BaseFileInventoryPlugin):
                 if decl['state'] == 'vars':
                     raise AnsibleError("%s:%d: Section [%s:vars] not valid for undefined group: %s" % (path, decl['line'], decl['name'], decl['name']))
                 elif decl['state'] == 'children':
-                    raise AnsibleError("%s:%d: Section [%s:children] includes undefined group: %s" % (path, decl['line'], decl['parent'], decl['name']))
+                    raise AnsibleError("%s:%d: Section [%s:children] includes undefined group: %s" % (path, decl['line'], decl['parents'].pop(), decl['name']))
 
     def _parse_group_name(self, line):
         '''

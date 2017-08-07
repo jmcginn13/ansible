@@ -34,7 +34,6 @@ from ansible.plugins.connection import ConnectionBase
 from ansible.template import Templar
 from ansible.utils.encrypt import key_for_hostname
 from ansible.utils.listify import listify_lookup_plugin_terms
-from ansible.utils.ssh_functions import check_for_controlpersist
 from ansible.utils.unsafe_proxy import UnsafeProxy, wrap_var
 
 try:
@@ -82,7 +81,7 @@ class TaskExecutor:
         returned as a dict.
         '''
 
-        display.debug("in run()")
+        display.debug("in run() - task %s" % self._task._uuid)
 
         try:
             try:
@@ -96,27 +95,28 @@ class TaskExecutor:
                 if len(items) > 0:
                     item_results = self._run_loop(items)
 
-                    # loop through the item results, and remember the changed/failed
-                    # result flags based on any item there.
-                    changed = False
-                    failed = False
-                    for item in item_results:
-                        if 'changed' in item and item['changed']:
-                            changed = True
-                        if 'failed' in item and item['failed']:
-                            failed = True
-
-                    # create the overall result item, and set the changed/failed
-                    # flags there to reflect the overall result of the loop
+                    # create the overall result item
                     res = dict(results=item_results)
 
-                    if changed:
-                        res['changed'] = True
+                    # loop through the item results, and set the global changed/failed result flags based on any item.
+                    for item in item_results:
+                        if 'changed' in item and item['changed'] and not res.get('changed'):
+                            res['changed'] = True
+                        if 'failed' in item and item['failed'] and not res.get('failed'):
+                            res['failed'] = True
+                            res['msg'] = 'One or more items failed'
 
-                    if failed:
-                        res['failed'] = True
-                        res['msg'] = 'One or more items failed'
-                    else:
+                        # ensure to accumulate these
+                        for array in ['warnings', 'deprecations']:
+                            if array in item and item[array]:
+                                if array not in res:
+                                    res[array] = []
+                                if not isinstance(item[array], list):
+                                    item[array] = [item[array]]
+                                res[array] = res[array] + item[array]
+                                del item[array]
+
+                    if not res.get('Failed', False):
                         res['msg'] = 'All items completed'
                 else:
                     res = dict(changed=False, skipped=True, skipped_reason='No items in the list', results=[])
@@ -432,7 +432,7 @@ class TaskExecutor:
             if self._loop_eval_error is not None:
                 raise self._loop_eval_error
             # skip conditional exception in the case of includes as the vars needed might not be available except in the included tasks or due to tags
-            if self._task.action not in ['include', 'include_role']:
+            if self._task.action not in ['include', 'include_tasks', 'include_role']:
                 raise
 
         # Not skipping, if we had loop error raised earlier we need to raise it now to halt the execution of this task
@@ -445,7 +445,7 @@ class TaskExecutor:
 
         # if this task is a TaskInclude, we just return now with a success code so the
         # main thread can expand the task list for the given host
-        if self._task.action == 'include':
+        if self._task.action in ('include', 'include_tasks'):
             include_variables = self._task.args.copy()
             include_file = include_variables.pop('_raw_params', None)
             if not include_file:
@@ -566,13 +566,15 @@ class TaskExecutor:
                 return failed_when_result
 
             if 'ansible_facts' in result:
-                if not C.NAMESPACE_FACTS:
-                    vars_copy.update(result['ansible_facts'])
-                vars_copy.update({'ansible_facts': result['ansible_facts']})
+                vars_copy.update(result['ansible_facts'])
 
             # set the failed property if it was missing.
             if 'failed' not in result:
-                result['failed'] = False
+                # rc is here for backwards compatibility and modules that use it instead of 'failed'
+                if 'rc' in result and result['rc'] not in [0, "0"]:
+                    result['failed'] = True
+                else:
+                    result['failed'] = False
 
             # set the changed property if it was missing.
             if 'changed' not in result:
@@ -610,9 +612,7 @@ class TaskExecutor:
             variables[self._task.register] = wrap_var(result)
 
         if 'ansible_facts' in result:
-            if not C.NAMESPACE_FACTS:
-                variables.update(result['ansible_facts'])
-            variables.update({'ansible_facts': result['ansible_facts']})
+            variables.update(result['ansible_facts'])
 
         # save the notification target in the result, if it was specified, as
         # this task may be running in a loop in which case the notification
@@ -627,7 +627,7 @@ class TaskExecutor:
         #        there is another source of truth we can use
         delegated_vars = variables.get('ansible_delegated_vars', dict()).get(self._task.delegate_to, dict()).copy()
         if len(delegated_vars) > 0:
-            result["_ansible_delegated_vars"] = dict()
+            result["_ansible_delegated_vars"] = {'ansible_delegated_host': self._task.delegate_to}
             for k in ('ansible_host', ):
                 result["_ansible_delegated_vars"][k] = delegated_vars.get(k)
 

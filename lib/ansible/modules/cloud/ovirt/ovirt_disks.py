@@ -133,6 +133,11 @@ options:
             - "Note that this parameter isn't idempotent, as it's not possible
                to check if the disk should be or should not be sparsified."
         version_added: "2.4"
+    openstack_volume_type:
+        description:
+            - "Name of the openstack volume type. This is valid when working
+               with cinder."
+        version_added: "2.4"
 extends_documentation_fragment: ovirt
 '''
 
@@ -212,6 +217,7 @@ import traceback
 import ssl
 
 from httplib import HTTPSConnection
+from httplib import IncompleteRead
 
 try:
     from urllib.parse import urlparse
@@ -324,7 +330,7 @@ def download_disk_image(connection, module):
     def _transfer(transfer_service, proxy_connection, proxy_url, transfer_ticket):
         disks_service = connection.system_service().disks_service()
         disk = disks_service.disk_service(module.params['id']).get()
-        size = disk.provisioned_size
+        size = disk.actual_size
         transfer_headers = {
             'Authorization': transfer_ticket,
         }
@@ -344,7 +350,11 @@ def download_disk_image(connection, module):
                 if r.status >= 300:
                     raise Exception("Error: %s" % r.read())
 
-                mydisk.write(r.read())
+                try:
+                    mydisk.write(r.read())
+                except IncompleteRead as e:
+                    mydisk.write(e.partial)
+                    break
                 pos += chunk_size
     return transfer(
         connection,
@@ -398,6 +408,9 @@ class DisksModule(BaseModule):
                 self._module.params.get('format')
             ) if self._module.params.get('format') else None,
             sparse=self._module.params.get('format') != 'raw',
+            openstack_volume_type=otypes.OpenStackVolumeType(
+                name=self.param('openstack_volume_type')
+            ) if self.param('openstack_volume_type') else None,
             provisioned_size=convert_to_bytes(
                 self._module.params.get('size')
             ),
@@ -522,6 +535,7 @@ def main():
         upload_image_path=dict(default=None, aliases=['image_path']),
         force=dict(default=False, type='bool'),
         sparsify=dict(default=None, type='bool'),
+        openstack_volume_type=dict(default=None),
     )
     module = AnsibleModule(
         argument_spec=argument_spec,

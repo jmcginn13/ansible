@@ -5,21 +5,11 @@
 # Written by Seth Vidal <skvidal at fedoraproject.org>
 # (c) 2014, Epic Games, Inc.
 #
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
-#
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
+
 
 ANSIBLE_METADATA = {'metadata_version': '1.0',
                     'status': ['stableinterface'],
@@ -194,6 +184,12 @@ EXAMPLES = '''
     name: '*'
     state: latest
 
+- name: upgrade all packages, excluding kernel & foo related packages
+  yum:
+    name: '*'
+    state: latest
+    exclude: kernel*,foo*
+
 - name: install the nginx rpm from a remote repo
   yum:
     name: http://nginx.org/packages/centos/6/noarch/RPMS/nginx-release-centos-6-0.el6.ngx.noarch.rpm
@@ -294,24 +290,23 @@ def ensure_yum_utils(module):
 
 def fetch_rpm_from_url(spec, module=None):
     # download package so that we can query it
-    tempdir = tempfile.mkdtemp()
-    package = os.path.join(tempdir, str(spec.rsplit('/', 1)[1]))
+    package_name, _ = os.path.splitext(str(spec.rsplit('/', 1)[1]))
+    package_file = tempfile.NamedTemporaryFile(prefix=package_name, suffix='.rpm', delete=False)
+    module.add_cleanup_file(package_file.name)
     try:
         rsp, info = fetch_url(module, spec)
         if not rsp:
             module.fail_json(msg="Failure downloading %s, %s" % (spec, info['msg']))
-        f = open(package, 'w')
         data = rsp.read(BUFSIZE)
         while data:
-            f.write(data)
+            package_file.write(data)
             data = rsp.read(BUFSIZE)
-        f.close()
+        package_file.close()
     except Exception:
         e = get_exception()
-        shutil.rmtree(tempdir)
         if module:
             module.fail_json(msg="Failure downloading %s, %s" % (spec, e))
-    return package
+    return package_file.name
 
 def po_to_nevra(po):
 
@@ -481,13 +476,6 @@ def what_provides(module, repoq, req_spec, conf_file, qf=def_qf, en_repos=None, 
         en_repos = []
     if dis_repos is None:
         dis_repos = []
-
-    if req_spec.endswith('.rpm') and '://' not in req_spec:
-        return req_spec
-
-    elif '://' in req_spec:
-        local_path = fetch_rpm_from_url(req_spec, module=module)
-        return local_path
 
     if not repoq:
 
@@ -659,7 +647,6 @@ def install(module, items, repoq, yum_basecmd, conf_file, en_repos, dis_repos, i
     res['msg'] = ''
     res['rc'] = 0
     res['changed'] = False
-    tempdir = tempfile.mkdtemp()
 
     for spec in items:
         pkg = None
@@ -758,13 +745,6 @@ def install(module, items, repoq, yum_basecmd, conf_file, en_repos, dis_repos, i
         cmd = yum_basecmd + ['install'] + pkgs
 
         if module.check_mode:
-            # Remove rpms downloaded for EL5 via url
-            try:
-                shutil.rmtree(tempdir)
-            except Exception:
-                e = get_exception()
-                module.fail_json(msg="Failure deleting temp directory %s, %s" % (tempdir, e))
-
             module.exit_json(changed=True, results=res['results'], changes=dict(installed=pkgs))
 
         changed = True
@@ -797,13 +777,6 @@ def install(module, items, repoq, yum_basecmd, conf_file, en_repos, dis_repos, i
 
         # Record change
         res['changed'] = changed
-
-    # Remove rpms downloaded for EL5 via url
-    try:
-        shutil.rmtree(tempdir)
-    except Exception:
-        e = get_exception()
-        module.fail_json(msg="Failure deleting temp directory %s, %s" % (tempdir, e))
 
     return res
 
@@ -952,6 +925,35 @@ def latest(module, items, repoq, yum_basecmd, conf_file, en_repos, dis_repos, in
                 pkgs['update'].append(spec)
                 will_update.add(spec)
                 continue
+
+            # check if pkgspec is installed (if possible for idempotence)
+            # localpkg
+            elif spec.endswith('.rpm') and '://' not in spec:
+                if not os.path.exists(spec):
+                    res['msg'] += "No RPM file matching '%s' found on system" % spec
+                    res['results'].append("No RPM file matching '%s' found on system" % spec)
+                    res['rc'] = 127 # Ensure the task fails in with-loop
+                    module.fail_json(**res)
+
+                # get the pkg name-v-r.arch
+                nvra = local_nvra(module, spec)
+
+                # local rpm files can't be updated
+                if not is_installed(module, repoq, nvra, conf_file, en_repos=en_repos, dis_repos=dis_repos, installroot=installroot):
+                    pkgs['install'].append(spec)
+                continue
+
+            # URL
+            elif '://' in spec:
+                # download package so that we can check if it's already installed
+                package = fetch_rpm_from_url(spec, module=module)
+                nvra = local_nvra(module, package)
+
+                # local rpm files can't be updated
+                if not is_installed(module, repoq, nvra, conf_file, en_repos=en_repos, dis_repos=dis_repos, installroot=installroot):
+                    pkgs['install'].append(package)
+                continue
+
             # dep/pkgname  - find it
             else:
                 if is_installed(module, repoq, spec, conf_file, en_repos=en_repos, dis_repos=dis_repos, installroot=installroot):

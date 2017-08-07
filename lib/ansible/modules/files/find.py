@@ -1,23 +1,13 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# (c) 2014, Ruggero Marchei <ruggero.marchei@daemonzone.net>
-# (c) 2015, Brian Coca <bcoca@ansible.com>
-#
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>
+# Copyright: (c) 2014, Ruggero Marchei <ruggero.marchei@daemonzone.net>
+# Copyright: (c) 2015, Brian Coca <bcoca@ansible.com>
+# Copyright: (c) 2017, Ansible Project
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
 
 ANSIBLE_METADATA = {'metadata_version': '1.0',
                     'status': ['stableinterface'],
@@ -31,6 +21,7 @@ version_added: "2.0"
 short_description: Return a list of files based on specific criteria
 description:
     - Return a list of files based on specific criteria. Multiple criteria are AND'd together.
+    - For Windows targets, use the M(win_find) module instead.
 options:
     age:
         description:
@@ -96,6 +87,8 @@ options:
         choices: [ 'no', 'yes' ]
         description:
             - If false the patterns are file globs (shell) if true they are python regexes.
+notes:
+    - For Windows targets, use the M(win_find) module instead.
 '''
 
 
@@ -122,14 +115,14 @@ EXAMPLES = r'''
 
 - name: Find /var/log files equal or greater than 10 megabytes ending with .old or .log.gz
 - find:
-    paths: /var/tmp
+    paths: /var/log
     patterns: '*.old,*.log.gz'
     size: 10m
 
 # Note that YAML double quotes require escaping backslashes but yaml single quotes do not.
 - name: Find /var/log files equal or greater than 10 megabytes ending with .old or .log.gz via regex
 - find:
-    paths: /var/tmp
+    paths: /var/log
     patterns: "^.*?\\.(?:old|log\\.gz)$"
     size: 10m
     use_regex: yes

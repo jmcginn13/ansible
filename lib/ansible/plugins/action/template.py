@@ -20,13 +20,12 @@ __metaclass__ = type
 import os
 
 from ansible import constants as C
-from ansible.errors import AnsibleError
-from ansible.module_utils._text import to_bytes, to_native, to_text
+from ansible.errors import AnsibleError, AnsibleFileNotFound
+from ansible.module_utils._text import to_text
+from ansible.module_utils.parsing.convert_bool import boolean
 from ansible.plugins.action import ActionBase
 from ansible.template import generate_ansible_template_vars
 from ansible.utils.hashing import checksum_s
-
-boolean = C.mk_boolean
 
 
 class ActionModule(ActionBase):
@@ -44,7 +43,7 @@ class ActionModule(ActionBase):
                 dest_stat = self._execute_remote_stat(dest, all_vars=all_vars, follow=False, tmp=tmp)
 
         except AnsibleError as e:
-            return dict(failed=True, msg=to_native(e))
+            return dict(failed=True, msg=to_text(e))
 
         return dest_stat['checksum']
 
@@ -58,7 +57,7 @@ class ActionModule(ActionBase):
 
         source = self._task.args.get('src', None)
         dest = self._task.args.get('dest', None)
-        force = boolean(self._task.args.get('force', True))
+        force = boolean(self._task.args.get('force', True), strict=False)
         state = self._task.args.get('state', None)
         newline_sequence = self._task.args.get('newline_sequence', self.DEFAULT_NEWLINE_SEQUENCE)
         variable_start_string = self._task.args.get('variable_start_string', None)
@@ -88,7 +87,7 @@ class ActionModule(ActionBase):
                 source = self._find_needle('templates', source)
             except AnsibleError as e:
                 result['failed'] = True
-                result['msg'] = to_native(e)
+                result['msg'] = to_text(e)
 
         if 'failed' in result:
             return result
@@ -107,10 +106,18 @@ class ActionModule(ActionBase):
             if dest_stat['exists'] and dest_stat['isdir']:
                 dest = self._connection._shell.join_path(dest, os.path.basename(source))
 
-        # template the source data locally & get ready to transfer
-        b_source = to_bytes(source)
+        # Get vault decrypted tmp file
         try:
-            with open(b_source, 'r') as f:
+            tmp_source = self._loader.get_real_file(source)
+        except AnsibleFileNotFound as e:
+            result['failed'] = True
+            result['msg'] = "could not find src=%s, %s" % (source, e)
+            self._remove_tmp_path(tmp)
+            return result
+
+        # template the source data locally & get ready to transfer
+        try:
+            with open(tmp_source, 'r') as f:
                 template_data = to_text(f.read())
 
             # set jinja2 internal search path for includes
@@ -148,8 +155,10 @@ class ActionModule(ActionBase):
             self._templar.set_available_variables(old_vars)
         except Exception as e:
             result['failed'] = True
-            result['msg'] = type(e).__name__ + ": " + str(e)
+            result['msg'] = "%s: %s" % (type(e).__name__, to_text(e))
             return result
+        finally:
+            self._loader.cleanup_tmp_file(tmp_source)
 
         if not tmp:
             tmp = self._make_tmp_path()

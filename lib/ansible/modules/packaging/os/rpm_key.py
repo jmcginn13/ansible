@@ -4,20 +4,11 @@
 # Ansible module to import third party repo keys to your rpm db
 # (c) 2013, Héctor Acosta <hector.acosta@gazzang.com>
 #
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
+
 
 ANSIBLE_METADATA = {'metadata_version': '1.0',
                     'status': ['preview'],
@@ -161,7 +152,7 @@ class RpmKey(object):
             gpg = self.module.get_bin_path('gpg2')
 
         if not gpg:
-            self.json_fail(msg="rpm_key requires a command line gpg or gpg2, none found")
+            self.module.fail_json(msg="rpm_key requires a command line gpg or gpg2, none found")
 
         stdout, stderr = self.execute_command([gpg, '--no-tty', '--batch', '--with-colons', '--fixed-list-mode', '--list-packets', keyfile])
         for line in stdout.splitlines():
@@ -170,7 +161,7 @@ class RpmKey(object):
                 # We want just the last 8 characters of the keyid
                 keyid = line.split()[-1].strip()[8:]
                 return keyid
-        self.json_fail(msg="Unexpected gpg output")
+        self.module.fail_json(msg="Unexpected gpg output")
 
     def is_keyid(self, keystr):
         """Verifies if a key, as provided by the user is a keyid"""

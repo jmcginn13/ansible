@@ -84,9 +84,7 @@ class InventoryModule(BaseInventoryPlugin):
 
         try:
             cache_key = self.get_cache_prefix(path)
-            if cache and cache_key in inventory.cache:
-                data = inventory.cache[cache_key]
-            else:
+            if not cache or cache_key not in inventory.cache:
                 try:
                     sp = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 except OSError as e:
@@ -107,42 +105,40 @@ class InventoryModule(BaseInventoryPlugin):
                 except Exception as e:
                     raise AnsibleError("Inventory {0} contained characters that cannot be interpreted as UTF-8: {1}".format(path, to_native(e)))
 
-                if cache:
-                    inventory.cache[cache_key] = data
+                try:
+                    inventory.cache[cache_key] = self.loader.load(data, file_name=path)
+                except Exception as e:
+                    raise AnsibleError("failed to parse executable inventory script results from {0}: {1}\n{2}".format(path, to_native(e), err))
 
-            try:
-                processed = self.loader.load(data)
-            except Exception as e:
-                raise AnsibleError("failed to parse executable inventory script results from {0}: {1}\n{2}".format(path, to_native(e), err))
-
+            processed = inventory.cache[cache_key]
             if not isinstance(processed, Mapping):
                 raise AnsibleError("failed to parse executable inventory script results from {0}: needs to be a json dict\n{1}".format(path, err))
 
             group = None
             data_from_meta = None
+
+            # A "_meta" subelement may contain a variable "hostvars" which contains a hash for each host
+            # if this "hostvars" exists at all then do not call --host for each # host.
+            # This is for efficiency and scripts should still return data
+            # if called with --host for backwards compat with 1.2 and earlier.
             for (group, gdata) in processed.items():
                 if group == '_meta':
-                    if 'hostvars' in processed:
-                        data_from_meta = processed['hostvars']
+                    if 'hostvars' in gdata:
+                        data_from_meta = gdata['hostvars']
                 else:
                     self._parse_group(group, gdata)
 
-            # in Ansible 1.3 and later, a "_meta" subelement may contain
-            # a variable "hostvars" which contains a hash for each host
-            # if this "hostvars" exists at all then do not call --host for each
-            # host.  This is for efficiency and scripts should still return data
-            # if called with --host for backwards compat with 1.2 and earlier.
             for host in self._hosts:
                 got = {}
                 if data_from_meta is None:
                     got = self.get_host_variables(path, host)
                 else:
                     try:
-                        got = processed.get(host, {})
+                        got = data_from_meta.get(host, {})
                     except AttributeError as e:
                         raise AnsibleError("Improperly formatted host information for %s: %s" % (host, to_native(e)))
 
-                    self.populate_host_vars(host, got, group)
+                self.populate_host_vars([host], got)
 
         except Exception as e:
             raise AnsibleParserError(to_native(e))
@@ -172,7 +168,7 @@ class InventoryModule(BaseInventoryPlugin):
             for k, v in iteritems(data['vars']):
                 self.inventory.set_variable(group, k, v)
 
-        if group != 'meta' and isinstance(data, dict) and 'children' in data:
+        if group != '_meta' and isinstance(data, dict) and 'children' in data:
             for child_name in data['children']:
                 self.inventory.add_group(child_name)
                 self.inventory.add_child(group, child_name)
@@ -189,6 +185,6 @@ class InventoryModule(BaseInventoryPlugin):
         if out.strip() == '':
             return {}
         try:
-            return json_dict_bytes_to_unicode(self.loader.load(out))
+            return json_dict_bytes_to_unicode(self.loader.load(out, file_name=path))
         except ValueError:
             raise AnsibleError("could not parse post variable response: %s, %s" % (cmd, out))

@@ -12,7 +12,7 @@ variables needed for Boto have already been set:
     export AWS_ACCESS_KEY_ID='AK123'
     export AWS_SECRET_ACCESS_KEY='abc123'
 
-optional region environement variable if region is 'auto'
+optional region environment variable if region is 'auto'
 
 This script also assumes there is an ec2.ini file alongside it.  To specify a
 different path to ec2.ini, define the EC2_INI_PATH environment variable:
@@ -656,7 +656,11 @@ class Ec2Inventory(object):
 
             if e.error_code == 'AuthFailure':
                 error = self.get_auth_error_message()
-            if not e.reason == "Forbidden":
+            elif e.error_code == "OptInRequired":
+                error = "RDS hasn't been enabled for this account yet. " \
+                    "You must either log in to the RDS service through the AWS console to enable it, " \
+                    "or set 'rds = False' in ec2.ini"
+            elif not e.reason == "Forbidden":
                 error = "Looks like AWS RDS is down:\n%s" % e.message
             self.fail_with_error(error, 'getting RDS instances')
 
@@ -723,7 +727,7 @@ class Ec2Inventory(object):
         ''' Makes an AWS API call to the list of ElastiCache clusters (with
         nodes' info) in a particular region.'''
 
-        # ElastiCache boto module doesn't provide a get_all_intances method,
+        # ElastiCache boto module doesn't provide a get_all_instances method,
         # that's why we need to call describe directly (it would be called by
         # the shorthand method anyway...)
         try:
@@ -738,7 +742,11 @@ class Ec2Inventory(object):
 
             if e.error_code == 'AuthFailure':
                 error = self.get_auth_error_message()
-            if not e.reason == "Forbidden":
+            elif e.error_code == "OptInRequired":
+                error = "ElastiCache hasn't been enabled for this account yet. " \
+                    "You must either log in to the ElastiCache service through the AWS console to enable it, " \
+                    "or set 'elasticache = False' in ec2.ini"
+            elif not e.reason == "Forbidden":
                 error = "Looks like AWS ElastiCache is down:\n%s" % e.message
             self.fail_with_error(error, 'getting ElastiCache clusters')
 
@@ -759,7 +767,7 @@ class Ec2Inventory(object):
         ''' Makes an AWS API call to the list of ElastiCache replication groups
         in a particular region.'''
 
-        # ElastiCache boto module doesn't provide a get_all_intances method,
+        # ElastiCache boto module doesn't provide a get_all_instances method,
         # that's why we need to call describe directly (it would be called by
         # the shorthand method anyway...)
         try:
@@ -991,7 +999,7 @@ class Ec2Inventory(object):
         self.push(self.inventory, 'ec2', hostname)
 
         self.inventory["_meta"]["hostvars"][hostname] = self.get_host_info_dict_from_instance(instance)
-        self.inventory["_meta"]["hostvars"][hostname]['ansible_ssh_host'] = dest
+        self.inventory["_meta"]["hostvars"][hostname]['ansible_host'] = dest
 
     def add_rds_instance(self, instance, region):
         ''' Adds an RDS instance to the inventory and index, as long as it is
@@ -1071,6 +1079,24 @@ class Ec2Inventory(object):
             except AttributeError:
                 self.fail_with_error('\n'.join(['Package boto seems a bit older.',
                                                 'Please upgrade boto >= 2.3.0.']))
+        # Inventory: Group by tag keys
+        if self.group_by_tag_keys:
+            for k, v in instance.tags.items():
+                if self.expand_csv_tags and v and ',' in v:
+                    values = map(lambda x: x.strip(), v.split(','))
+                else:
+                    values = [v]
+
+                for v in values:
+                    if v:
+                        key = self.to_safe("tag_" + k + "=" + v)
+                    else:
+                        key = self.to_safe("tag_" + k)
+                    self.push(self.inventory, key, hostname)
+                    if self.nested_groups:
+                        self.push_group(self.inventory, 'tags', self.to_safe("tag_" + k))
+                        if v:
+                            self.push_group(self.inventory, self.to_safe("tag_" + k), key)
 
         # Inventory: Group by engine
         if self.group_by_rds_engine:
@@ -1084,11 +1110,17 @@ class Ec2Inventory(object):
             if self.nested_groups:
                 self.push_group(self.inventory, 'rds_parameter_groups', self.to_safe("rds_parameter_group_" + instance.parameter_group.name))
 
+        # Global Tag: instances without tags
+        if self.group_by_tag_none and len(instance.tags) == 0:
+            self.push(self.inventory, 'tag_none', hostname)
+            if self.nested_groups:
+                self.push_group(self.inventory, 'tags', 'tag_none')
+
         # Global Tag: all RDS instances
         self.push(self.inventory, 'rds', hostname)
 
         self.inventory["_meta"]["hostvars"][hostname] = self.get_host_info_dict_from_instance(instance)
-        self.inventory["_meta"]["hostvars"][hostname]['ansible_ssh_host'] = dest
+        self.inventory["_meta"]["hostvars"][hostname]['ansible_host'] = dest
 
     def add_elasticache_cluster(self, cluster, region):
         ''' Adds an ElastiCache cluster to the inventory and index, as long as

@@ -73,14 +73,11 @@ class BaseInventoryPlugin(object):
     def clear_cache(self):
         pass
 
-    def populate_host_vars(self, hosts, variables, group, port=None):
-
-        if hosts:
-            for host in hosts:
-                self.inventory.add_host(host, group=group, port=port)
-                if variables:
-                    for k in variables:
-                        self.inventory.set_variable(host, k, variables[k])
+    def populate_host_vars(self, hosts, variables, group=None, port=None):
+        for host in hosts:
+            self.inventory.add_host(host, group=group, port=port)
+            for k in variables:
+                self.inventory.set_variable(host, k, variables[k])
 
     def _compose(self, template, variables):
         ''' helper method for pluigns to compose variables for Ansible based on jinja2 expression and inventory vars'''

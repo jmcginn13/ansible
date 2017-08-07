@@ -93,6 +93,10 @@ RPMRELEASE = $(RELEASE)
 ifneq ($(OFFICIAL),yes)
     RPMRELEASE = 100.git$(DATE)$(GITINFO)
 endif
+ifeq ($(PUBLISH),nightly)
+    # https://fedoraproject.org/wiki/Packaging:Versioning#Snapshots
+    RPMRELEASE = $(RELEASE).$(DATE)git.$(GIT_HASH)
+endif
 RPMNVR = "$(NAME)-$(VERSION)-$(RPMRELEASE)$(RPMDIST)"
 
 # MOCK build parameters
@@ -167,6 +171,12 @@ clean:
 	rm -f ./docs/man/man1/*
 	@echo "Cleaning up output from test runs"
 	rm -rf test/test_data
+	rm -rf shippable/
+	rm -rf logs/
+	rm -rf .cache/
+	rm -f test/units/.coverage*
+	rm -f test/results/*/*
+	find test/ -type f -name '*.retry' -delete
 	@echo "Cleaning up RPM building stuff"
 	rm -rf MANIFEST rpm-build
 	@echo "Cleaning up Debian building stuff"
@@ -176,13 +186,9 @@ clean:
 	rm -rf docs/js
 	@echo "Cleaning up authors file"
 	rm -f AUTHORS.TXT
-	@echo "Cleaning up tests"
-	rm -f test/units/.coverage*
-	rm -f test/results/*/*
 	@echo "Cleaning up docsite"
 	$(MAKE) -C docs/docsite clean
 	$(MAKE) -C docs/api clean
-	find test/ -type f -name '*.retry' -delete
 
 python:
 	$(PYTHON) setup.py build
@@ -199,17 +205,17 @@ sdist_upload: clean docs
 rpmcommon: sdist
 	@mkdir -p rpm-build
 	@cp dist/*.gz rpm-build/
-	@sed -e 's#^Version:.*#Version: $(VERSION)#' -e 's#^Release:.*#Release: $(RPMRELEASE)%{?dist}#' $(RPMSPEC) >rpm-build/$(NAME).spec
+	@sed -e 's#^Version:.*#Version: $(VERSION)#' -e 's#^Release:.*#Release: $(RPMRELEASE)%{?dist}$(REPOTAG)#' $(RPMSPEC) >rpm-build/$(NAME).spec
 
 mock-srpm: /etc/mock/$(MOCK_CFG).cfg rpmcommon
-	$(MOCK_BIN) -r $(MOCK_CFG) --resultdir rpm-build/  --buildsrpm --spec rpm-build/$(NAME).spec --sources rpm-build/
+	$(MOCK_BIN) -r $(MOCK_CFG) $(MOCK_ARGS) --resultdir rpm-build/  --buildsrpm --spec rpm-build/$(NAME).spec --sources rpm-build/
 	@echo "#############################################"
 	@echo "Ansible SRPM is built:"
 	@echo rpm-build/*.src.rpm
 	@echo "#############################################"
 
 mock-rpm: /etc/mock/$(MOCK_CFG).cfg mock-srpm
-	$(MOCK_BIN) -r $(MOCK_CFG) --resultdir rpm-build/ --rebuild rpm-build/$(NAME)-*.src.rpm
+	$(MOCK_BIN) -r $(MOCK_CFG) $(MOCK_ARGS) --resultdir rpm-build/ --rebuild rpm-build/$(NAME)-*.src.rpm
 	@echo "#############################################"
 	@echo "Ansible RPM is built:"
 	@echo rpm-build/*.noarch.rpm
@@ -316,4 +322,7 @@ docs: generate_asciidoc
 	make $(MANPAGES)
 
 alldocs: docs webdocs
+
+version:
+	@echo $(VERSION)
 
